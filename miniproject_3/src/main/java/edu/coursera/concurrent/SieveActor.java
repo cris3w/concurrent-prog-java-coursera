@@ -1,6 +1,7 @@
 package edu.coursera.concurrent;
 
 import edu.rice.pcdp.Actor;
+import edu.rice.pcdp.PCDP;
 
 /**
  * An actor-based implementation of the Sieve of Eratosthenes.
@@ -9,6 +10,7 @@ import edu.rice.pcdp.Actor;
  * countPrimes to determin the number of primes <= limit.
  */
 public final class SieveActor extends Sieve {
+
     /**
      * {@inheritDoc}
      *
@@ -19,7 +21,23 @@ public final class SieveActor extends Sieve {
      */
     @Override
     public int countPrimes(final int limit) {
-        throw new UnsupportedOperationException();
+        final SieveActorActor sieveActor = new SieveActorActor(2);
+
+        PCDP.finish(() -> {
+            for (int i = 3; i <= limit; i += 2) {
+                sieveActor.send(i);
+            }
+            sieveActor.send(0);
+        });
+
+        int numberOfPrimes = 0;
+        SieveActorActor actor = sieveActor;
+        while (actor != null) {
+            numberOfPrimes++;
+            actor = actor.nextActor;
+        }
+
+        return numberOfPrimes;
     }
 
     /**
@@ -27,6 +45,15 @@ public final class SieveActor extends Sieve {
      * parallel.
      */
     public static final class SieveActorActor extends Actor {
+
+        private int prime;
+
+        private SieveActorActor nextActor;
+
+        public SieveActorActor(final int prime) {
+            this.prime = prime;
+        }
+
         /**
          * Process a single message sent to this actor.
          *
@@ -36,7 +63,19 @@ public final class SieveActor extends Sieve {
          */
         @Override
         public void process(final Object msg) {
-            throw new UnsupportedOperationException();
+            final int candidate = (Integer) msg;
+            if (candidate > 0 && isLocalPrime(candidate))
+                sendToNextActor(msg);
+        }
+
+        private void sendToNextActor(final Object msg) {
+            if (nextActor == null)
+                nextActor = new SieveActorActor((Integer) msg);
+            else nextActor.send(msg);
+        }
+
+        private boolean isLocalPrime(final Integer candidate) {
+            return candidate % prime != 0;
         }
     }
 }
