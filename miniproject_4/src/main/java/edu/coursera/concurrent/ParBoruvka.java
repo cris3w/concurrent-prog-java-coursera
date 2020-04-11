@@ -8,6 +8,7 @@ import edu.coursera.concurrent.boruvka.Component;
 import java.util.Queue;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * A parallel implementation of Boruvka's algorithm to compute a Minimum
@@ -28,7 +29,49 @@ public final class ParBoruvka extends AbstractBoruvka<ParBoruvka.ParComponent> {
     @Override
     public void computeBoruvka(final Queue<ParComponent> nodesLoaded,
             final SolutionToBoruvka<ParComponent> solution) {
-        throw new UnsupportedOperationException();
+
+        ParComponent currentNode;
+
+        while ((currentNode = nodesLoaded.poll()) != null) {
+
+            if (!currentNode.lock.tryLock()) {
+                continue;
+            }
+
+            if (currentNode.isDead) {
+                currentNode.lock.unlock();
+                continue;
+            }
+
+            final Edge<ParComponent> edge = currentNode.getMinEdge();
+            if (edge == null) {
+                currentNode.lock.unlock();
+                solution.setSolution(currentNode);
+                break;
+            }
+
+            final ParComponent otherNode = edge.getOther(currentNode);
+            if (!otherNode.lock.tryLock()) {
+                currentNode.lock.unlock();
+                nodesLoaded.add(currentNode);
+                continue;
+            }
+
+            if (otherNode.isDead) {
+                otherNode.lock.unlock();
+                currentNode.lock.unlock();
+                nodesLoaded.add(currentNode);
+                continue;
+            }
+
+            otherNode.isDead = true;
+            currentNode.merge(otherNode, edge.weight());
+
+            currentNode.lock.unlock();
+            otherNode.lock.unlock();
+
+            nodesLoaded.add(currentNode);
+        }
     }
 
     /**
@@ -42,6 +85,8 @@ public final class ParBoruvka extends AbstractBoruvka<ParBoruvka.ParComponent> {
          *  it.
          */
         public final int nodeId;
+
+        public final ReentrantLock lock = new ReentrantLock();
 
         /**
          * List of edges attached to this component, sorted by weight from least
